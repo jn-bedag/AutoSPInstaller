@@ -250,8 +250,16 @@ Function StartTracing ($server)
         $regKey = Get-Item -Path "HKLM:\SOFTWARE\AutoSPInstaller\" -ErrorAction SilentlyContinue
         If ($regKey) {$script:Logtime = $regkey.GetValue("LogTime")}
         If ([string]::IsNullOrEmpty($logtime)) {$script:Logtime = Get-Date -Format yyyy-MM-dd_h-mm}
-        If ($server) {$script:LogFile = "$env:USERPROFILE\Desktop\AutoSPInstaller-$server-$script:Logtime.log"}
-        else {$script:LogFile = "$env:USERPROFILE\Desktop\AutoSPInstaller-$script:Logtime.log"}
+
+        If ($Global:logToScriptDir)
+        {
+            if (!(Test-Path "$env:dp0\logs")) {New-Item -type Directory -Path "$env:dp0\logs" -ErrorAction Stop |Out-Null}
+            $script:LogFile = "$env:dp0\logs\AutoSPInstaller-$script:Logtime.log"
+        }else{
+            If ($server) {$script:LogFile = "$env:USERPROFILE\Desktop\AutoSPInstaller-$server-$script:Logtime.log"}
+            else {$script:LogFile = "$env:USERPROFILE\Desktop\AutoSPInstaller-$script:Logtime.log"}
+        }
+
         Start-Transcript -Path $logFile -Append -Force
         If ($?) {$script:isTracing = $true}
     }
@@ -583,7 +591,7 @@ Function InstallPrerequisites ([xml]$xmlInput)
     Else
     {
         Write-Host -ForegroundColor White " - Installing Prerequisite Software:"
-        If ((Get-WmiObject Win32_OperatingSystem).Version -eq "6.1.7601") # Win2008 R2 SP1
+        If ((Get-WmiObject Win32_OperatingSystem).Version -gt "6.1.7601") # Win2008 R2 SP1
         {
             # Due to the SharePoint 2010 issue described in http://support.microsoft.com/kb/2581903 (related to installing the KB976462 hotfix)
             # (and simply to speed things up for SharePoint 2013) we install the .Net 3.5.1 features prior to attempting the PrerequisiteInstaller on Win2008 R2 SP1
@@ -641,7 +649,7 @@ Function InstallPrerequisites ([xml]$xmlInput)
             If ($xmlInput.Configuration.Install.OfflineInstall -eq $true) # Install all prerequisites from local folder
             {
                 # Try to pre-install .Net Framework 3.5.1 on Windows Server 2012, 2012 R2 or 2016
-                if ((Get-WmiObject Win32_OperatingSystem).Version -like "6.2*" -or (Get-WmiObject Win32_OperatingSystem).Version -like "6.3*" -or (Get-WmiObject Win32_OperatingSystem).Version -like "6.4*" -or (Get-WmiObject Win32_OperatingSystem).Version -like "10.0*")
+                if ((Get-WmiObject Win32_OperatingSystem).Version -gt "6.2" -or (Get-WmiObject Win32_OperatingSystem).Version -like "6.3*" -or (Get-WmiObject Win32_OperatingSystem).Version -like "6.4*" -or (Get-WmiObject Win32_OperatingSystem).Version -like "10.0*")
                 {
                     if (Test-Path -Path "$env:SPbits\PrerequisiteInstallerFiles\sxs")
                     {
@@ -2633,6 +2641,7 @@ Function CreateMetadataServiceApp ([xml]$xmlInput)
 }
 #endregion
 
+
 #region Assign Certificate
 # ===================================================================================
 # Func: AssignCert
@@ -2661,6 +2670,11 @@ Function AssignCert ($SSLHostHeader, $SSLPort, $SSLSiteName)
         }
         Write-Host -ForegroundColor White " - Looking for existing `"$certCommonName`" wildcard certificate..."
         $cert = Get-ChildItem cert:\LocalMachine\My | Where-Object {$_.Subject -eq "CN=$certCommonName"}
+        if (!$cert)
+        {
+            Write-Host -ForegroundColor White " - Looking for existing `"$SSLHostHeader`" single certificate..."
+            $cert = Get-ChildItem cert:\LocalMachine\My | Where-Object {$_.Subject -match "CN=$SSLHostHeader"}
+        }
     }
     Else
     {
@@ -2738,6 +2752,11 @@ Function AssignCert ($SSLHostHeader, $SSLPort, $SSLSiteName)
         else # Set the binding to the host header
         {
             Set-ItemProperty IIS:\Sites\$SSLSiteName -Name bindings -Value @{protocol="https";bindingInformation="*:$($SSLPort):$($SSLHostHeader)"} -ErrorAction SilentlyContinue
+            #also set port 80 binding to support for redirection if port is 443
+            if ($SSLPort -eq "443"){
+                New-ItemProperty IIS:\Sites\$SSLSiteName -Name bindings -Value @{protocol="http";bindingInformation="*:80:$($SSLHostHeader)"} -ErrorAction SilentlyContinue
+                New-SPAlternateURL -Url "http://$($SSLHostHeader)" -Zone Default -WebApplication $SSLSiteName -internal| Out-Null
+            }
         }
         ## Set-WebBinding -Name $SSLSiteName -BindingInformation ":$($SSLPort):" -PropertyName Port -Value $SSLPort -PropertyName Protocol -Value https
         Write-Host -ForegroundColor White " - Certificate has been assigned to site `"https://$SSLHostHeader`:$SSLPort`""
@@ -2819,7 +2838,7 @@ Function CreateWebApp ([System.Xml.XmlElement]$webApp)
     $useSSL = $false
     $installedOfficeServerLanguages = (Get-Item "HKLM:\Software\Microsoft\Office Server\$spVer.0\InstalledLanguages").GetValueNames() | Where-Object {$_ -ne ""}
     # Strip out any protocol value
-    If ($fullUrl -like "https://*") {$useSSL = $true}
+    If ($url -like "https://*") {$useSSL = $true}
     $hostHeader = $url -replace "http://","" -replace "https://",""
     if (((Get-WmiObject Win32_OperatingSystem).Version -like "6.2*" -or (Get-WmiObject Win32_OperatingSystem).Version -like "6.3*") -and ($spYear -eq 2010))
     {
@@ -2879,14 +2898,15 @@ Function CreateWebApp ([System.Xml.XmlElement]$webApp)
     {
         $appPoolAccountSwitch = @{ApplicationPoolAccount = $($webAppPoolAccount.username)}
     }
-    $getSPWebApplication = Get-SPWebApplication -Identity $fullUrl -ErrorAction SilentlyContinue
+    Write-Host " - Checking Web App $url"
+    $getSPWebApplication = Get-SPWebApplication -Identity $url -ErrorAction SilentlyContinue
     If ($null -eq $getSPWebApplication)
     {
         Write-Host -ForegroundColor White " - Creating Web App `"$webAppName`""
         New-SPWebApplication -Name $webAppName -ApplicationPool $appPool -DatabaseServer $dbServer -DatabaseName $database -Url $url -Port $port -SecureSocketsLayer:$useSSL @hostHeaderSwitch @appPoolAccountSwitch @authProviderSwitch @pathSwitch @databaseCredentialsParameter | Out-Null
         If (-not $?) { Throw " - Failed to create web application" }
     }
-    Else {Write-Host -ForegroundColor White " - Web app '$fullUrl' already provisioned."}
+    Else {Write-Host -ForegroundColor White " - Web app '$url' already provisioned."}
     SetupManagedPaths $webApp
     If ($useSSL)
     {
@@ -2914,14 +2934,14 @@ Function CreateWebApp ([System.Xml.XmlElement]$webApp)
     {
         $spservice = Get-SPManagedAccountXML $xmlInput -CommonName "spservice"
         Write-Host -ForegroundColor White " - Granting $($spservice.username) rights to `"$webAppName`"..." -NoNewline
-        $wa = Get-SPWebApplication -Identity $fullUrl
+        $wa = Get-SPWebApplication -Identity $url
         $wa.GrantAccessToProcessIdentity("$($spservice.username)")
         Write-Host -ForegroundColor White "OK."
     }
     if ($webApp.GrantCurrentUserFullControl -eq $true)
     {
         $currentUser = "$env:USERDOMAIN\$env:USERNAME"
-        $wa = Get-SPWebApplication -Identity $fullUrl
+        $wa = Get-SPWebApplication -Identity $url
         if ($wa.UseClaimsAuthentication -eq $true) {$currentUser = 'i:0#.w|' + $currentUser}
         Set-WebAppUserPolicy $wa $currentUser "$env:USERNAME" "Full Control"
     }
@@ -2991,7 +3011,7 @@ Function CreateWebApp ([System.Xml.XmlElement]$webApp)
                     if (!$siteDatabaseExists)
                     {
                         Write-Host -ForegroundColor White " - Creating/attaching/upgrading content database `"$siteDatabase`"..."
-                        New-SPContentDatabase -Name $siteDatabase -WebApplication (Get-SPWebApplication -Identity $fullUrl) @databaseCredentialsParameter | Out-Null
+                        New-SPContentDatabase -Name $siteDatabase -WebApplication (Get-SPWebApplication -Identity $url) @databaseCredentialsParameter | Out-Null
                     }
                     Write-Host -ForegroundColor White " - Creating Site Collection `"$siteURL`"..."
                     $site = New-SPSite -Url $siteURL -OwnerAlias $ownerAlias -SecondaryOwner $env:USERDOMAIN\$env:USERNAME -ContentDatabase $siteDatabase -Description $siteCollectionName -Name $siteCollectionName -Language $LCID @templateSwitch @hostHeaderWebAppSwitch @CompatibilityLevelSwitch -ErrorAction Stop
@@ -3292,9 +3312,10 @@ Function CreateUserProfileServiceApplication ([xml]$xmlInput)
                 }
                 # Create MySites Web Application if it doesn't already exist, and we've specified to create one
                 $getSPWebApplication = Get-SPWebApplication -Identity $mySiteURL -ErrorAction SilentlyContinue
+                Write-Host "Checking "
                 If ($null -eq $getSPWebApplication -and ($mySiteWebApp))
                 {
-                    Write-Host -ForegroundColor White " - Creating Web App `"$mySiteName`"..."
+                    Write-Host -ForegroundColor White " - Creating Web App MySite `"$mySiteName`"..."
                     New-SPWebApplication -Name $mySiteName -ApplicationPoolAccount $($mySiteAppPoolAcct.username) -ApplicationPool $mySiteAppPool -DatabaseServer $mySiteDBServer -DatabaseName $mySiteDB -Url $mySiteURL -Port $mySitePort -SecureSocketsLayer:$mySiteUseSSL @hostHeaderSwitch @pathSwitch @databaseCredentialsParameter | Out-Null
                 }
                 Else
@@ -8016,21 +8037,45 @@ Function PinToTaskbar ([string]$application)
 }
 #endregion
 
+
+
+#region Get Default Web Site
+function Get-DefaultWebsite
+{
+    [CmdletBinding()]
+    Param()
+
+    $websites = Get-Website
+    foreach($ws in $websites) {
+        if ($ws.id -eq 1 -or $ws.physicalPath -eq "%SystemDrive%\inetpub\wwwroot") { # Try different ways of identifying the Default Web Site, in case it has a different name (e.g. localized installs)
+            $conflictingBinding = $ws.bindings.Collection | ? {$_.protocol -eq 'http' -and $_.bindingInformation -match '\*:80:*'}
+            if ($conflictingBinding) { return $ws }
+            Write-Verbose("Found IIS WebSite with either id=1 or physicalPath='%SystemDrive%\inetpub\wwwroot', but it doesn't seem to be default (no '*:80:' http binding)")
+        }
+    }
+    return $null
+}
+#endregion
+
 #region Stop Default Web Site
 Function Stop-DefaultWebsite ()
 {
     # Added to avoid conflicts with web apps that do not use a host header
     # Thanks to Paul Stork per http://autospinstaller.codeplex.com/workitem/19318 for confirming the Stop-Website cmdlet
     ImportWebAdministration
-    $defaultWebsite = Get-Website | Where-Object {$_.Name -eq "Default Web Site" -or $_.ID -eq 1 -or $_.physicalPath -eq "%SystemDrive%\inetpub\wwwroot"} # Try different ways of identifying the Default Web Site, in case it has a different name (e.g. localized installs)
-    Write-Host -ForegroundColor White " - Checking $($defaultWebsite.Name)..." -NoNewline
-    if ($defaultWebsite.State -ne "Stopped")
-    {
-        Write-Host -ForegroundColor White "Stopping..." -NoNewline
-        $defaultWebsite | Stop-Website
-        if ($?) {Write-Host -ForegroundColor White "OK."}
+    $defaultWebsite = Get-DefaultWebsite
+    if($defaultWebsite){
+        Write-Host -ForegroundColor White " - Checking Default Web Site: $($defaultWebsite.Name) ... " -NoNewline
+        if ($defaultWebsite.State -ne "Stopped")
+        {
+            Write-Host -ForegroundColor White "Stopping ... " -NoNewline
+            $defaultWebsite | Stop-Website
+            if ($?) {Write-Host -ForegroundColor White "OK."}
+        }
+        else {Write-Host -ForegroundColor White " - Already stopped."}
+    }else{
+        Write-Host -ForegroundColor White " - No Default Web Site found."
     }
-    else {Write-Host -ForegroundColor White "Already stopped."}
 }
 #endregion
 
