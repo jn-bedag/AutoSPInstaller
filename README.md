@@ -18,3 +18,5 @@ We now can terminate SSL on the sharepoint servers, provide certificates from an
 
 We run the script from plain admin PowerShell:  
 .\AutoSPInstallerMain.ps1 -inputFile .\inputfile.xml -logToScriptDir
+
+Be aware that the changes are not tested in all scenarios, so use at your own risk.

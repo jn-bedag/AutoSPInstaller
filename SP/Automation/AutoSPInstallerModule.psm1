@@ -2755,7 +2755,14 @@ Function AssignCert ($SSLHostHeader, $SSLPort, $SSLSiteName)
             #also set port 80 binding to support for redirection if port is 443
             if ($SSLPort -eq "443"){
                 New-ItemProperty IIS:\Sites\$SSLSiteName -Name bindings -Value @{protocol="http";bindingInformation="*:80:$($SSLHostHeader)"} -ErrorAction SilentlyContinue
-                New-SPAlternateURL -Url "http://$($SSLHostHeader)" -Zone Default -WebApplication $SSLSiteName -internal| Out-Null
+
+                if ("http://$($SSLHostHeader)" -in $(Get-SPAlternateURL -WebApplication $SSLSiteName).IncomingUrl){
+                    Write-Host -ForegroundColor White " - Internal URL http://$($SSLHostHeader) already exist"
+                }else{
+                    Write-Host -ForegroundColor White " - Adding AAM for http://$($SSLHostHeader)"
+                    New-SPAlternateURL -Url "http://$($SSLHostHeader)" -Zone Default -WebApplication $SSLSiteName -internal| Out-Null
+                }
+
             }
         }
         ## Set-WebBinding -Name $SSLSiteName -BindingInformation ":$($SSLPort):" -PropertyName Port -Value $SSLPort -PropertyName Protocol -Value https
