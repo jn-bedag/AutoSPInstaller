@@ -538,34 +538,8 @@ If (MatchComputerName $farmServers $env:COMPUTERNAME)
     }
     Finally
     {
-        # Only do this stuff if this was a local session and it succeeded, and if we aren't attempting a remote install;
-        # Otherwise these sites may not be available or 'complete' yet
-        If ((Confirm-LocalSession) -and !$aborted -and !($enableRemoteInstall))
-        {
-            # Launch Central Admin
-            If (ShouldIProvision($xmlInput.Configuration.Farm.CentralAdmin) -eq $true)
-            {
-                Write-Host -ForegroundColor White " - Launching Central Admin..."
-                Start-Process $PSConfigUI -ArgumentList "-cmd showcentraladmin"
-            }
-            # Launch any site collections we created, but only if this is a local (non-remote) session and this is a farm server and the Foundation Web Application Service is not disabled
-            If ((MatchComputerName $farmServers $env:COMPUTERNAME) -and (ShouldIProvision $xmlInput.Configuration.Farm.Services.FoundationWebApplication))
-            {
-                ForEach ($webApp in $xmlInput.Configuration.WebApplications.WebApplication)
-                {
-                    ForEach ($siteCollection in $webApp.SiteCollections.SiteCollection)
-                    {
-                        $siteURL = $siteCollection.siteURL
-                        If ($siteURL -ne $null)
-                        {
-                            Start-Sleep 30 # Wait for the previous site to load before trying to load this site
-                            Write-Host -ForegroundColor White " - Launching $siteURL..."
-                            Start-Process "$siteURL" -WindowStyle Minimized
-                        }
-                    }
-                }
-            }
-        }
+        # Don't launch all the sites
+
     }
 }
 # If the local server isn't a SharePoint farm server, just attempt remote installs
