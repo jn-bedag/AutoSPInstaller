@@ -9,6 +9,7 @@ Love AutoSPInstaller? Has it saved you or your company time and money? Have you 
 
 This project was forked and we made some improvements/changes to meet our requirements, mostly according to SSL bindings.  
 We now can terminate SSL on the sharepoint servers, provide certificates from an PKI and have an http to https redirect.  
+You have to import the certificates to the servers certstore.  
 - Change: If for a webapplication SSL and port 443 are specified, also create an http port 80 binding and add the alternate access mapping. This allows to have an redirect from http to https
 - Improvement: The script now also looks for an existing certificate in certstore witch matches the dns-name
 - Improvement: Provide a new parameter -logToScriptDir which saves the AutoSPInstaller log to the scripts \log directory.
