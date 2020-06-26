@@ -251,10 +251,10 @@ Function StartTracing ($server)
         If ($regKey) {$script:Logtime = $regkey.GetValue("LogTime")}
         If ([string]::IsNullOrEmpty($logtime)) {$script:Logtime = Get-Date -Format yyyy-MM-dd_h-mm}
 
-        If ($Global:logToScriptDir)
+        If ($Global:logPath)
         {
-            if (!(Test-Path "$env:dp0\logs")) {New-Item -type Directory -Path "$env:dp0\logs" -ErrorAction Stop |Out-Null}
-            $script:LogFile = "$env:dp0\logs\AutoSPInstaller-$script:Logtime.log"
+            if (!(Test-Path $Global:logPath)) {New-Item -type Directory -Path $($Global:logPath) -ErrorAction Stop |Out-Null}
+            $script:LogFile = "$($Global:logPath)\AutoSPInstaller-$script:Logtime.log"
         }else{
             If ($server) {$script:LogFile = "$env:USERPROFILE\Desktop\AutoSPInstaller-$server-$script:Logtime.log"}
             else {$script:LogFile = "$env:USERPROFILE\Desktop\AutoSPInstaller-$script:Logtime.log"}

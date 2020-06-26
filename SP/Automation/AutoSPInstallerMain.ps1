@@ -3,7 +3,7 @@
     [string]$inputFile = $(throw '- Need parameter input file (e.g. "\\SPSERVER01\C$\SP\AutoSPInstaller\AutoSPInstallerInput.xml")'),
     [string]$targetServer = "",
     [string]$remoteAuthPassword = "",
-    [switch]$logToScriptDir,
+    [string]$logPath,
     [switch]$unattended
 )
 
@@ -25,7 +25,7 @@ $0 = $myInvocation.MyCommand.Definition
 $env:dp0 = [System.IO.Path]::GetDirectoryName($0)
 $env:bits = Get-Item $env:dp0 | Split-Path -Parent
 
-$Global:logToScriptDir = $logToScriptDir
+$Global:logPath = $logPath
 
 #region Source External Functions
 Write-Host -ForegroundColor White " - Importing AutoSPInstaller PowerShell Module..."
