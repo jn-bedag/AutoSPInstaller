@@ -17,8 +17,9 @@ You have to import the certificates to the servers certstore.
 - Change: Don't start all the URLs in browser after installation
 - Fix: Install prerequisites also for newer server Version
 - Fix: The script was checking for the wrong url when creating the webapp
+- Fix: If you have manually added additional Search ContentSources, the script was failing
 
-We run the script from plain admin PowerShell:  
-.\AutoSPInstallerMain.ps1 -inputFile .\inputfile.xml -logToScriptDir
+We run the script from admin PowerShell:  
+.\AutoSPInstallerMain.ps1 -inputFile .\inputfile.xml -logpath C:\install
 
 Be aware that the changes are not tested in all scenarios, so use at your own risk.
