@@ -5439,7 +5439,7 @@ function CreateEnterpriseSearchServiceApp ([xml]$xmlInput)
             $crawlStartAddresses += ","+$peopleSearchProtocol+$mySiteHostHeaderAndPort
         }
         Write-Host -ForegroundColor White " - Setting up crawl addresses for default content source..." -NoNewline
-        Get-SPEnterpriseSearchServiceApplication | Get-SPEnterpriseSearchCrawlContentSource | Set-SPEnterpriseSearchCrawlContentSource -StartAddresses $crawlStartAddresses
+        Get-SPEnterpriseSearchServiceApplication | Get-SPEnterpriseSearchCrawlContentSource -Identity 'Local SharePoint sites' | Set-SPEnterpriseSearchCrawlContentSource -StartAddresses $crawlStartAddresses
         If ($?) {Write-Host -ForegroundColor White "OK."}
         if ($spVer -ge 15) # Invoke-WebRequest requires PowerShell 3.0 but if we're installing SP2013 and we've gotten this far, we must have v3.0
         {
