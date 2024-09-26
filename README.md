@@ -1,6 +1,22 @@
 # AutoSPInstaller
-Automated SharePoint 2010/2013/2016/2019/SE PowerShell-based installation tool.
+Automated SharePoint 2010/2013/2016/2019/SE PowerShell-based installation script.
 
-This project was migrated to GitHub from CodePlex, where it was downloaded over 130,000 times!
 
-Love AutoSPInstaller? Has it saved you or your company time and money? Have you used it in any of your or your customers' projects or deployments? If so, why not consider [donating](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=QQPQPFRUTVWJJ&lc=CA&item_name=Brian%20Lalancette%27s%20Github%20Projects:&item_number=AutoSPInstaller&currency_code=USD&bn=PP%2dDonationsBF%3abtn_donate_LG%2egif%3aNonHosted") towards its ongoing support and development!
+# Forked
+
+This project was forked and we made some improvements/changes to meet our requirements, mostly according to SSL bindings.  
+Be aware that the changes are not tested in all scenarios, so use at your own risk.
+
+# Changes/Improvements
+
+- Improvement: The script now also looks for an existing certificate in certstore witch matches the dns-name.
+- Improvement: If you have multiple ssl sites listening on the same port, the script configures (Server Name Indication) SNI.
+- Improvement: Provide a new parameter -logPatch which let's you specify a custom log directory instead the useres desktop.
+- Improvement: Improved checking for default web site. Script broke if there was no default web site.
+- Change: Don't start all the URLs in browser after installation.
+- Fix: If you have manually added additional Search ContentSources, the script was failing.
+- Fix: Implemented error handling for site creation if it fails.
+
+We run the script from admin PowerShell:  
+.\AutoSPInstallerMain.ps1 -inputFile .\inputfile.xml -logpath C:\install
+

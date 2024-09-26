@@ -517,9 +517,9 @@ Function DisableServices ([xml]$xmlInput)
     If ($xmlInput.Configuration.Install.Disable.UnusedServices -eq $true)
     {
         WriteLine
-        Write-Host -ForegroundColor White " - Setting services Spooler and AudioSrv to Manual..."
+        Write-Host -ForegroundColor White " - Setting services Spooler, AudioSrv and TabletInputService to Manual..."
 
-        $servicesToSetManual = "Spooler", "AudioSrv"
+        $servicesToSetManual = "Spooler", "AudioSrv","TabletInputService"
         ForEach ($svcName in $servicesToSetManual)
         {
             $svc = Get-WmiObject win32_service | Where-Object {$_.Name -eq $svcName}
@@ -2875,92 +2875,127 @@ Function CreateMetadataServiceApp ([xml]$xmlInput)
 # ===================================================================================
 Function AssignCert ($SSLHostHeader, $SSLPort, $SSLSiteName)
 {
-    ImportWebAdministration
+    ReloadWebAdministration
     $spYear = $xmlInput.Configuration.Install.SPVersion
     $spVer = Get-MajorVersionNumber $spYear
     Write-Host -ForegroundColor White " - Assigning certificate to site `"https://$SSLHostHeader`:$SSLPort`""
-    # If our SSL host header is a FQDN (contains a dot), look for an existing wildcard cert
-    If ($SSLHostHeader -like "*.*")
+
+    # If we find an existing certificate matching the host header we use this, else we do the old stuff
+    Write-Host -ForegroundColor White " - Looking for existing `"$SSLHostHeader`" single certificate..."
+    $cert = Get-ChildItem cert:\LocalMachine\My | Where-Object {$_.Subject -match "CN=$SSLHostHeader"}
+    if($cert)
     {
-        # Remove the host portion of the URL and the leading dot
-        $splitSSLHostHeader = $SSLHostHeader -split "\."
-        $topDomain = $SSLHostHeader.Substring($splitSSLHostHeader[0].Length + 1)
-        # Create a new wildcard cert so we can potentially use it on other sites too
-        if ($SSLHostHeader -like "*.$env:USERDNSDOMAIN")
-        {
-            $certCommonName = "*.$env:USERDNSDOMAIN"
-        }
-        elseif ($SSLHostHeader -like "*.$topDomain")
-        {
-            $certCommonName = "*.$topDomain"
-        }
-        Write-Host -ForegroundColor White " - Looking for existing `"$certCommonName`" wildcard certificate..."
+        $certSubject = $cert.Subject
+        Write-Host -ForegroundColor White "  - Single certificate `"$certSubject`" found."
     }
-    Else
+    else
     {
-        # Just create a cert that matches the SSL host header
-        $certCommonName = $SSLHostHeader
-        Write-Host -ForegroundColor White " - Looking for existing `"$certCommonName`" certificate..."
-    }
-    $cert = Get-ChildItem cert:\LocalMachine\My | Where-Object {$_.Subject -eq "CN=$certCommonName"}
-    If (!$cert)
-    {
-        Write-Host -ForegroundColor White " - None found."
-        if (Get-Command -Name New-SelfSignedCertificate -ErrorAction SilentlyContinue) # SP2016 no longer seems to ship with makecert.exe, but we should be able to use PowerShell native commands instead in Windows 2012 R2 / PowerShell 4.0 and higher
+        Write-Host -ForegroundColor White "  - No single certificate found."
+        # If our SSL host header is a FQDN (contains a dot), look for an existing wildcard cert
+        If ($SSLHostHeader -like "*.*")
         {
-            # New PowerShelly way to create self-signed certs, so we don't need makecert.exe
-            # From http://windowsitpro.com/blog/creating-self-signed-certificates-powershell
-            Write-Host -ForegroundColor White " - Creating new self-signed certificate $certCommonName..."
-            $cert = New-SelfSignedCertificate -CertStoreLocation cert:\localmachine\my -DnsName $certCommonName
-            ##$cert = Get-ChildItem cert:\LocalMachine\My | Where-Object {$_.Subject -like "CN=``*$certCommonName"}
-        }
-        else # Try to create the cert using makecert.exe instead
-        {
-            # Get the actual location of makecert.exe in case we installed SharePoint in the non-default location
-            $spInstallPath = (Get-Item -Path "HKLM:\SOFTWARE\Microsoft\Office Server\$spVer.0").GetValue("InstallPath")
-            $makeCert = "$spInstallPath\Tools\makecert.exe"
-            If (Test-Path "$makeCert")
+            # Remove the host portion of the URL and the leading dot
+            $splitSSLHostHeader = $SSLHostHeader -split "\."
+            $topDomain = $SSLHostHeader.Substring($splitSSLHostHeader[0].Length + 1)
+            # Create a new wildcard cert so we can potentially use it on other sites too
+            if ($SSLHostHeader -like "*.$env:USERDNSDOMAIN")
             {
-                Write-Host -ForegroundColor White " - Creating new self-signed certificate $certCommonName..."
-                Start-Process -NoNewWindow -Wait -FilePath "$makeCert" -ArgumentList "-r -pe -n `"CN=$certCommonName`" -eku 1.3.6.1.5.5.7.3.1 -ss My -sr localMachine -sky exchange -sp `"Microsoft RSA SChannel Cryptographic Provider`" -sy 12"
-                $cert = Get-ChildItem cert:\LocalMachine\My | Where-Object {$_.Subject -like "CN=``*$certCommonName"}
-                if (!$cert)
+                $certCommonName = "*.$env:USERDNSDOMAIN"
+            }
+            elseif ($SSLHostHeader -like "*.$topDomain")
+            {
+                $certCommonName = "*.$topDomain"
+            }
+            Write-Host -ForegroundColor White "  - Looking for existing `"$certCommonName`" wildcard certificate..."
+        }
+        Else
+        {
+            # Just create a cert that matches the SSL host header
+            $certCommonName = $SSLHostHeader
+            Write-Host -ForegroundColor White "  - Looking for existing `"$certCommonName`" certificate..."
+        }
+        $cert = Get-ChildItem cert:\LocalMachine\My | Where-Object {$_.Subject -eq "CN=$certCommonName"}    
+
+        # If we don't have any cert, we create a wildcard cert and import it to the trusted root store
+        If (!$cert)
+        {
+            Write-Host -ForegroundColor White "  - None found."
+            if (Get-Command -Name New-SelfSignedCertificate -ErrorAction SilentlyContinue) # SP2016 no longer seems to ship with makecert.exe, but we should be able to use PowerShell native commands instead in Windows 2012 R2 / PowerShell 4.0 and higher
+            {
+                # New PowerShelly way to create self-signed certs, so we don't need makecert.exe
+                # From http://windowsitpro.com/blog/creating-self-signed-certificates-powershell
+                Write-Host -ForegroundColor White "  - Creating new self-signed certificate $certCommonName..."
+                $cert = New-SelfSignedCertificate -CertStoreLocation cert:\localmachine\my -DnsName $certCommonName
+                ##$cert = Get-ChildItem cert:\LocalMachine\My | Where-Object {$_.Subject -like "CN=``*$certCommonName"}
+            }
+            else # Try to create the cert using makecert.exe instead
+            {
+                # Get the actual location of makecert.exe in case we installed SharePoint in the non-default location
+                $spInstallPath = (Get-Item -Path "HKLM:\SOFTWARE\Microsoft\Office Server\$spVer.0").GetValue("InstallPath")
+                $makeCert = "$spInstallPath\Tools\makecert.exe"
+                If (Test-Path "$makeCert")
                 {
-                    $cert = Get-ChildItem cert:\LocalMachine\My | Where-Object {$_.Subject -eq "CN=$SSLHostHeader"}
+                    Write-Host -ForegroundColor White "  - Creating new self-signed certificate $certCommonName..."
+                    Start-Process -NoNewWindow -Wait -FilePath "$makeCert" -ArgumentList "-r -pe -n `"CN=$certCommonName`" -eku 1.3.6.1.5.5.7.3.1 -ss My -sr localMachine -sky exchange -sp `"Microsoft RSA SChannel Cryptographic Provider`" -sy 12"
+                    $cert = Get-ChildItem cert:\LocalMachine\My | Where-Object {$_.Subject -like "CN=``*$certCommonName"}
+                    if (!$cert)
+                    {
+                        $cert = Get-ChildItem cert:\LocalMachine\My | Where-Object {$_.Subject -eq "CN=$SSLHostHeader"}
+                    }
+                }
+                Else
+                {
+                    Write-Host -ForegroundColor Yellow "  - `"$makeCert`" not found."
+                    Write-Host -ForegroundColor White "  - Looking for any machine-named certificates we can use..."
+                    # Select the first certificate with the most recent valid date
+                    $cert = Get-ChildItem cert:\LocalMachine\My | Where-Object {$_.Subject -like "*$env:COMPUTERNAME"} | Sort-Object NotBefore -Desc | Select-Object -First 1
+                    If (!$cert)
+                    {
+                        Write-Host -ForegroundColor Yellow "  - None found, skipping certificate creation."
+                    }
                 }
             }
-            Else
+            # Export our certificate to a file, then import it to the Trusted Root Certification Authorites store so we don't get nasty browser warnings
+            If($cert)
             {
-                Write-Host -ForegroundColor Yellow " - `"$makeCert`" not found."
-                Write-Host -ForegroundColor White " - Looking for any machine-named certificates we can use..."
-                # Select the first certificate with the most recent valid date
-                $cert = Get-ChildItem cert:\LocalMachine\My | Where-Object {$_.Subject -like "*$env:COMPUTERNAME"} | Sort-Object NotBefore -Desc | Select-Object -First 1
-                If (!$cert)
-                {
-                    Write-Host -ForegroundColor Yellow " - None found, skipping certificate creation."
-                }
+                $certSubject = $cert.Subject
+                $certThumbprint = $cert.Thumbprint
+                # This will actually only work if the Subject and the host part of the URL are the same
+                # Borrowed from https://www.orcsweb.com/blog/james/powershell-ing-on-windows-server-how-to-import-certificates-using-powershell/
+                # Fix up the cert subject name to a file-friendly format
+                $certSubjectName = $certSubject.Split(",")[0] -replace "CN=","" -replace "\*","wildcard"
+                $certsubjectname = $certsubjectname.TrimEnd("/")
+                Write-Host -ForegroundColor White " - Exporting `"$certSubject`" to `"$certSubjectName.cer`"..."
+                $cert.Export("Cert") | Set-Content -Path "$((Get-Item $env:TEMP).FullName)\$certSubjectName.cer" -Encoding byte
+                $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+                Write-Host -ForegroundColor White " - Importing `"$certSubjectName.cer`" to Local Machine\Root..."
+                $pfx.Import("$((Get-Item $env:TEMP).FullName)\$certSubjectName.cer")
+                $store = New-Object System.Security.Cryptography.X509Certificates.X509Store("Root","LocalMachine")
+                $store.Open("MaxAllowed")
+                $store.Add($pfx)
+                $store.Close()
             }
         }
     }
+    
+    # We assign the certificate to IIS bindings
     If ($cert)
     {
         $certSubject = $cert.Subject
-        Write-Host -ForegroundColor White " - Certificate `"$certSubject`" found."
+        $certThumbprint = $cert.Thumbprint
+        Write-Host -ForegroundColor White " - Certificate `"$certSubject`" `"$certThumbprint`" found."
         # Fix up the cert subject name to a file-friendly format
         $certSubjectName = $certSubject.Split(",")[0] -replace "CN=","" -replace "\*","wildcard"
         $certsubjectname = $certsubjectname.TrimEnd("/")
-        # Export our certificate to a file, then import it to the Trusted Root Certification Authorites store so we don't get nasty browser warnings
-        # This will actually only work if the Subject and the host part of the URL are the same
-        # Borrowed from https://www.orcsweb.com/blog/james/powershell-ing-on-windows-server-how-to-import-certificates-using-powershell/
-        Write-Host -ForegroundColor White " - Exporting `"$certSubject`" to `"$certSubjectName.cer`"..."
-        $cert.Export("Cert") | Set-Content -Path "$((Get-Item $env:TEMP).FullName)\$certSubjectName.cer" -Encoding byte
-        $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
-        Write-Host -ForegroundColor White " - Importing `"$certSubjectName.cer`" to Local Machine\Root..."
-        $pfx.Import("$((Get-Item $env:TEMP).FullName)\$certSubjectName.cer")
-        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store("Root","LocalMachine")
-        $store.Open("MaxAllowed")
-        $store.Add($pfx)
-        $store.Close()
+
+        # If there are multiple web apps using the same port, we have to use SNI
+        $useSNIParameter = $false
+        $allPorts = $xmlInput.Configuration.WebApplications.WebApplication |ForEach-Object{$_.Port}
+        if ($($allPorts |Group-Object | Where-Object { $_.Count -gt 1 })){
+            Write-Host -ForegroundColor White "    - Setting SNI"
+            $useSNIParameter = $true
+        }
+
         Write-Host -ForegroundColor White " - Assigning certificate `"$certSubject`" to SSL-enabled site..."
         if ($spYear -eq "SE") # SharePoint Subscription Edition (SPSE) way using native cmdlets
         {
@@ -2979,7 +3014,7 @@ Function AssignCert ($SSLHostHeader, $SSLPort, $SSLSiteName)
             }
             else # Use method for a regular web app
             {
-                Set-SPWebApplication -Identity $SSLSiteName -Zone Default -Port $SSLPort -SecureSocketsLayer -HostHeader $SSLHostHeader -Certificate $seCert
+                Set-SPWebApplication -Identity $SSLSiteName -Zone Default -Port $SSLPort -SecureSocketsLayer -HostHeader $SSLHostHeader -Certificate $seCert -UseServerNameIndication:$useSNIParameter
             }
         }
         else # Classic way
@@ -2992,11 +3027,24 @@ Function AssignCert ($SSLHostHeader, $SSLPort, $SSLSiteName)
             # Check if we have specified no host header
             if (!([string]::IsNullOrEmpty($webApp.UseHostHeader)) -and $webApp.UseHostHeader -eq $false)
             {
-                Set-ItemProperty IIS:\Sites\$SSLSiteName -Name bindings -Value @{protocol="https";bindingInformation="*:$($SSLPort):"} -ErrorAction SilentlyContinue
+                if($useSNIParameter){
+                    Set-ItemProperty IIS:\Sites\$SSLSiteName -Name bindings -Value @{protocol="https";bindingInformation="*:$($SSLPort):";sslFlags=1} -ErrorAction SilentlyContinue
+                }
+                else
+                {
+                    Set-ItemProperty IIS:\Sites\$SSLSiteName -Name bindings -Value @{protocol="https";bindingInformation="*:$($SSLPort):"} -ErrorAction SilentlyContinue
+                }
             }
             else # Set the binding to the host header
             {
-                Set-ItemProperty IIS:\Sites\$SSLSiteName -Name bindings -Value @{protocol="https";bindingInformation="*:$($SSLPort):$($SSLHostHeader)"} -ErrorAction SilentlyContinue
+                if($useSNIParameter){
+                    Set-ItemProperty IIS:\Sites\$SSLSiteName -Name bindings -Value @{protocol="https";bindingInformation="*:$($SSLPort):$($SSLHostHeader);sslFlags=1"} -ErrorAction SilentlyContinue
+                }
+                else
+                {
+                    Set-ItemProperty IIS:\Sites\$SSLSiteName -Name bindings -Value @{protocol="https";bindingInformation="*:$($SSLPort):$($SSLHostHeader)"} -ErrorAction SilentlyContinue
+                }
+                
             }
         }
         ## Set-WebBinding -Name $SSLSiteName -BindingInformation ":$($SSLPort):" -PropertyName Port -Value $SSLPort -PropertyName Protocol -Value https
@@ -3292,7 +3340,15 @@ Function CreateWebApp ([System.Xml.XmlElement]$webApp)
                         New-SPContentDatabase -Name $siteDatabase -WebApplication (Get-SPWebApplication -Identity $fullUrl) @databaseCredentialsParameter | Out-Null
                     }
                     Write-Host -ForegroundColor White " - Creating Site Collection `"$siteURL`"..."
-                    $site = New-SPSite -Url $siteURL -OwnerAlias $ownerAlias -SecondaryOwner $env:USERDOMAIN\$env:USERNAME -ContentDatabase $siteDatabase -Description $siteCollectionName -Name $siteCollectionName -Language $LCID @templateSwitch @hostHeaderWebAppSwitch @CompatibilityLevelSwitch -ErrorAction Stop
+                    Try
+                    {
+                      $site = New-SPSite -Url $siteURL -OwnerAlias $ownerAlias -SecondaryOwner $env:USERDOMAIN\$env:USERNAME -ContentDatabase $siteDatabase -Description $siteCollectionName -Name $siteCollectionName -Language $LCID @templateSwitch @hostHeaderWebAppSwitch @CompatibilityLevelSwitch -ErrorAction Stop
+                    }
+                    Catch
+                    {
+                        Write-Output "."
+                        throw " - Error creating the site. Close this window and run the script again."
+                    }
 
                     # JDM Not all Web Templates greate the default SharePoint Croups that are made by the UI
                     # JDM These lines will insure that the the approproprate SharePoint Groups, Owners, Members, Visitors are created
@@ -5935,7 +5991,7 @@ function CreateEnterpriseSearchServiceApp ([xml]$xmlInput)
             $crawlStartAddresses += ","+$peopleSearchProtocol+$mySiteHostHeaderAndPort
         }
         Write-Host -ForegroundColor White " - Setting up crawl addresses for default content source..." -NoNewline
-        Get-SPEnterpriseSearchServiceApplication | Get-SPEnterpriseSearchCrawlContentSource | Set-SPEnterpriseSearchCrawlContentSource -StartAddresses $crawlStartAddresses
+        Get-SPEnterpriseSearchServiceApplication | Get-SPEnterpriseSearchCrawlContentSource -Identity 'Local SharePoint sites'| Set-SPEnterpriseSearchCrawlContentSource -StartAddresses $crawlStartAddresses
         If ($?) {Write-Host -ForegroundColor White "OK."}
         if ($spVer -ge 15) # Invoke-WebRequest requires PowerShell 3.0 but if we're installing SP2013 and we've gotten this far, we must have v3.0
         {
@@ -7631,6 +7687,45 @@ Function ImportWebAdministration
 }
 #endregion
 
+# ====================================================================================
+# Func: ReloadWebAdministration
+# Desc: Reload IIS WebAdministration Snapin/Module
+# ====================================================================================
+Function ReloadWebAdministration
+{
+
+    Write-Host -ForegroundColor White " - Reloading IIS Administration Module"
+    $queryOS = Get-WmiObject Win32_OperatingSystem
+    $queryOS = $queryOS.Version
+    Try
+    {
+        If ($queryOS.Contains("6.0")) # Win2008
+        {
+            If (!(Get-PSSnapin WebAdministration -ErrorAction SilentlyContinue))
+            {
+                If (!(Test-Path $env:ProgramFiles\IIS\PowerShellSnapin\IIsConsole.psc1))
+                {
+                    Start-Process -Wait -NoNewWindow -FilePath msiexec.exe -ArgumentList "/i `"$env:SPbits\PrerequisiteInstallerFiles\iis7psprov_x64.msi`" /passive /promptrestart"
+                }
+                Remove-PSSnapin WebAdministration -ErrorAction SilentlyContinue
+                Add-PSSnapin WebAdministration
+            }
+        }
+        Else # Win2008R2 or Win2012
+        {
+            Remove-Module WebAdministration -ErrorAction SilentlyContinue
+            Remove-Module IISAdministration -ErrorAction SilentlyContinue
+            Import-Module WebAdministration
+        }
+    }
+    Catch
+    {
+        Throw " - Could not load IIS Administration module."
+
+    }
+}
+#endregion
+
 #region ConvertTo-PlainText
 # ===================================================================================
 # Func: ConvertTo-PlainText
@@ -8510,7 +8605,7 @@ Function Stop-DefaultWebsite ()
     # Added to avoid conflicts with web apps that do not use a host header
     # Thanks to Paul Stork per http://autospinstaller.codeplex.com/workitem/19318 for confirming the Stop-Website cmdlet
     ImportWebAdministration
-    $defaultWebsite = Get-Website | Where-Object {$_.Name -eq "Default Web Site" -or $_.ID -eq 1 -or $_.physicalPath -eq "%SystemDrive%\inetpub\wwwroot"} # Try different ways of identifying the Default Web Site, in case it has a different name (e.g. localized installs)
+    $defaultWebsite = Get-Website | Where-Object {$_.Name -eq "Default Web Site" -or $_.physicalPath -eq "%SystemDrive%\inetpub\wwwroot"} # Try different ways of identifying the Default Web Site, in case it has a different name (e.g. localized installs)
     Write-Host -ForegroundColor White " - Checking $($defaultWebsite.Name)..." -NoNewline
     if ($defaultWebsite.State -ne "Stopped")
     {

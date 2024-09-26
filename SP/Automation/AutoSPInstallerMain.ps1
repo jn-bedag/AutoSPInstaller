@@ -3,7 +3,8 @@
     [string]$inputFile = $(throw '- Need parameter input file (e.g. "\\SPSERVER01\C$\SP\AutoSPInstaller\AutoSPInstallerInput.xml")'),
     [string]$targetServer = "",
     [string]$remoteAuthPassword = "",
-    [switch]$Unattended
+    [string]$logPath,
+    [switch]$unattended
 )
 
 # Globally update all instances of "localhost" in the input file to actual local server name
@@ -23,6 +24,8 @@ Clear-Host
 $0 = $myInvocation.MyCommand.Definition
 $env:dp0 = [System.IO.Path]::GetDirectoryName($0)
 $env:bits = Get-Item $env:dp0 | Split-Path -Parent
+
+$Global:logPath = $logPath
 
 #region Source External Functions
 Write-Host -ForegroundColor White " - Importing AutoSPInstaller PowerShell Module..."
@@ -551,7 +554,9 @@ If (MatchComputerName $farmServers $env:COMPUTERNAME)
     }
     Finally
     {
-        # Only do this stuff if this was a local session and it succeeded, not running Server Core, and if we aren't attempting a remote install;
+        # Don't launch all the sites
+        <#
+		# Only do this stuff if this was a local session and it succeeded, not running Server Core, and if we aren't attempting a remote install;
         # Otherwise these sites may not be available or 'complete' yet
         If ((Confirm-LocalSession) -and !$aborted -and !($enableRemoteInstall) -and !((Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows NT/Currentversion").InstallationType -eq "Server Core"))
         {
@@ -578,7 +583,7 @@ If (MatchComputerName $farmServers $env:COMPUTERNAME)
                     }
                 }
             }
-        }
+        }#>
     }
 }
 # If the local server isn't a SharePoint farm server, just attempt remote installs
@@ -599,7 +604,7 @@ If (!$aborted)
         Write-Host -ForegroundColor White "-----------------------------------"
         If ($isTracing) {Stop-Transcript; $script:isTracing = $false}
         Pause "exit"
-        If ((-not $Unattended) -and (-not (Get-CimInstance -ClassName Win32_OperatingSystem).Version -eq "6.1.7601")) {Invoke-Item $logFile} # We don't want to automatically open the log Win 2008 with SP2013, due to a nasty bug causing BSODs! See https://autospinstaller.codeplex.com/workitem/19491 for more info.
+        If ((-not $unattended) -and (-not (Get-CimInstance -ClassName Win32_OperatingSystem).Version -eq "6.1.7601")) {Invoke-Item $logFile} # We don't want to automatically open the log Win 2008 with SP2013, due to a nasty bug causing BSODs! See https://autospinstaller.codeplex.com/workitem/19491 for more info.
     }
     # Remove any lingering LogTime values in the registry
     Remove-ItemProperty -Path "HKLM:\SOFTWARE\AutoSPInstaller\" -Name "LogTime" -ErrorAction SilentlyContinue
