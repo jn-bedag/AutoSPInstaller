@@ -254,8 +254,16 @@ Function StartTracing ($server)
         $regKey = Get-Item -Path "HKLM:\SOFTWARE\AutoSPInstaller\" -ErrorAction SilentlyContinue
         If ($regKey) {$script:Logtime = $regkey.GetValue("LogTime")}
         If ([string]::IsNullOrEmpty($logtime)) {$script:Logtime = Get-Date -Format yyyy-MM-dd_h-mm}
-        If ($server) {$script:LogFile = "$env:USERPROFILE\Desktop\AutoSPInstaller-$server-$script:Logtime.log"}
-        else {$script:LogFile = "$env:USERPROFILE\Desktop\AutoSPInstaller-$script:Logtime.log"}
+
+        If ($Global:logPath)
+        {
+            if (!(Test-Path $Global:logPath)) {New-Item -type Directory -Path $($Global:logPath) -ErrorAction Stop |Out-Null}
+            $script:LogFile = "$($Global:logPath)\AutoSPInstaller-$script:Logtime.log"
+        }else{
+            If ($server) {$script:LogFile = "$env:USERPROFILE\Desktop\AutoSPInstaller-$server-$script:Logtime.log"}
+            else {$script:LogFile = "$env:USERPROFILE\Desktop\AutoSPInstaller-$script:Logtime.log"}
+        }
+
         Start-Transcript -Path $logFile -Append -Force
         If ($?) {$script:isTracing = $true}
     }
