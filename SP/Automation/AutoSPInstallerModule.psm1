@@ -250,8 +250,7 @@ Function StartTracing ($server)
 {
     If (!$isTracing)
     {
-        $script:Logtime = $regkey.GetValue("LogTime")
-        If ([string]::IsNullOrEmpty($logtime)) {$script:Logtime = Get-Date -Format yyyy-MM-dd_h-mm}
+        $script:Logtime = Get-Date -Format yyyy-MM-dd_h-mm
 
         If ($Global:logPath)
         {
