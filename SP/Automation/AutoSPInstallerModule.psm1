@@ -3334,8 +3334,21 @@ Function CreateWebApp ([System.Xml.XmlElement]$webApp)
             {
                 $hostHeaderWebAppSwitch = @{}
             }
+
             Write-Host -ForegroundColor White " - Checking for Site Collection `"$siteURL`"..."
-            $getSPSiteCollection = Get-SPSite -Identity $siteURL -ErrorAction SilentlyContinue
+            Try{
+                $getSPSiteCollection = Get-SPSite -Identity $siteURL
+            }Catch{
+                Write-Warning "    - Error $_. Trying once again..."
+                ReloadWebAdministration
+                Start-Sleep 5
+                Try{
+                    $getSPSiteCollection = Get-SPSite -Identity $siteURL 
+                }Catch{
+                    Write-Error "Error getting Site Collectio. Error: $_"
+                }
+
+            }
             If (($null -eq $getSPSiteCollection) -and ($null -ne $siteURL))
             {
                 # Verify that the Language we're trying to create the site in is currently installed on the server
