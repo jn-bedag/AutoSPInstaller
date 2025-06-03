@@ -319,6 +319,7 @@ Function Complete-Install ([xml]$xmlInput)
     # Perform these steps only if the local server is a SharePoint farm server
     If (MatchComputerName $farmServers $env:COMPUTERNAME)
     {
+        <# Some configurations and running the configuration wizard requires this user to be a local admin.
         # Remove Farm Account from local Administrators group to avoid big scary warnings in Central Admin
         # But only if the script actually put it there, and we want to leave it there
         # (e.g. to work around the issue with native SharePoint backups deprovisioning UPS per http://www.toddklindt.com/blog/Lists/Posts/Post.aspx?ID=275)
@@ -342,6 +343,7 @@ Function Complete-Install ([xml]$xmlInput)
         {
             Write-Host -ForegroundColor White " - Not changing local Admin membership of $farmAcct."
         }
+        #>
 
         Write-Host -ForegroundColor White " - Adding Network Service to local WSS_WPG group (fixes event log warnings)..."
         Try

@@ -14,6 +14,7 @@ Be aware that the changes are not tested in all scenarios, so use at your own ri
 - Improvement: Provide a new parameter -logPatch which let's you specify a custom log directory instead the useres desktop.
 - Improvement: Improved checking for default web site. Script broke if there was no default web site.
 - Change: Don't start all the URLs in browser after installation.
+- Change: The Farm Account resides as a local administrator. In environments with dedicated Always-On Databases, limited database rights and hardening policies, we need to be able to run some tasks under this user.
 - Fix: If you have manually added additional Search ContentSources, the script was failing.
 - Fix: Implemented error handling for site creation if it fails.
 
