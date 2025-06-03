@@ -3337,15 +3337,15 @@ Function CreateWebApp ([System.Xml.XmlElement]$webApp)
 
             Write-Host -ForegroundColor White " - Checking for Site Collection `"$siteURL`"..."
             Try{
-                $getSPSiteCollection = Get-SPSite -Identity $siteURL
+                $getSPSiteCollection = Get-SPSite -Identity $siteURL -ErrorAction Stop
             }Catch{
-                Write-Warning "    - Error $_. Trying once again..."
+                Write-Host -ForegroundColor White "   - Error: $_. Trying once again..."
                 ReloadWebAdministration
                 Start-Sleep 5
                 Try{
-                    $getSPSiteCollection = Get-SPSite -Identity $siteURL 
+                    $getSPSiteCollection = Get-SPSite -Identity $siteURL -ErrorAction Stop
                 }Catch{
-                    Write-Error "Error getting Site Collectio. Error: $_"
+                    Write-Host -ForegroundColor White "   - No Site Collection $siteURL found."
                 }
 
             }
