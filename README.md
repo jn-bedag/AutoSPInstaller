@@ -17,6 +17,7 @@ Be aware that the changes are not tested in all scenarios, so use at your own ri
 - Change: The Farm Account resides as a local administrator. In environments with dedicated Always-On Databases, limited database rights and hardening policies, we need to be able to run some tasks under this user.
 - Fix: If you have manually added additional Search ContentSources, the script was failing.
 - Fix: Implemented error handling for site creation if it fails.
+- Fix: Activating Search Topology stuck (C:\Root folder)
 
 We run the script from admin PowerShell:  
 .\AutoSPInstallerMain.ps1 -inputFile .\inputfile.xml -logpath C:\install
