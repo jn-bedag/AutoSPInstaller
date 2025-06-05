@@ -5212,6 +5212,12 @@ function CreateEnterpriseSearchServiceApp ([xml]$xmlInput)
                 EnsureFolder $svcConfig.CustomIndexLocation
             }
         }
+        
+        Write-Host -ForegroundColor White " - Checking C:\Root folder"
+        #noderunner.exe requires this folder to exist. It will try to create the folder but fails if the service account does not have local admin rights (which is shouldn't).
+        #therefore we have to create the folder during installation.
+        EnsureFolder "C:\Root"
+        
         Write-Host -ForegroundColor White "  - Configuring search service..." -NoNewline
         Get-SPEnterpriseSearchService | Set-SPEnterpriseSearchService  `
           -ContactEmail $svcConfig.ContactEmail -ConnectionTimeout $svcConfig.ConnectionTimeout `
